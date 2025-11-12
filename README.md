@@ -19,8 +19,6 @@ Attention! Added support for Unity 2023 and above
 
 # Installation
 
-## Install this package in your react-native project:
-
 ```sh
 npm install @azesmway/react-native-unity
 
@@ -28,6 +26,20 @@ or
 
 yarn add @azesmway/react-native-unity
 ```
+
+For Expo projects (SDK 48+)
+
+1. Run prebuild
+```sh
+npx expo prebuild --clean
+```
+2. Build your app
+```sh
+npx expo run:ios
+```
+
+**Note for Expo users**: The UnityFramework must be placed at `<project_root>/unity/builds/ios/` before running `expo prebuild`.
+
 
 ## Configure your Unity project:
 
@@ -177,6 +189,20 @@ const Unity = () => {
 };
 
 export default Unity;
+```
+
+## Automatic Setup with Expo Config Plugin
+
+Add the plugin to your `app.json`:
+
+```json
+{
+  "expo": {
+    "plugins": [
+      "@azesmway/react-native-unity"
+    ]
+  }
+}
 ```
 
 ## Props

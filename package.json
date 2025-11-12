@@ -1,9 +1,12 @@
 {
   "name": "@azesmway/react-native-unity",
-  "version": "1.0.11",
+  "version": "1.0.12",
   "description": "React Native Unity",
   "main": "lib/commonjs/index",
   "module": "lib/module/index",
+  "expo": {
+    "plugin": "./plugin/withUnityFramework.js"
+  },
   "types": "lib/typescript/index.d.ts",
   "react-native": "src/index",
   "source": "src/index",
