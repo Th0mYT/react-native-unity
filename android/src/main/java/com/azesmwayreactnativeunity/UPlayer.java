@@ -97,7 +97,7 @@ public class UPlayer {
 
             return (FrameLayout) getFrameLayout.invoke(unityPlayer);
         } catch (NoSuchMethodException | IllegalAccessException | InvocationTargetException e) {
-            return unityPlayer;
+            return (FrameLayout)(object) unityPlayer;
         }
     }
 
