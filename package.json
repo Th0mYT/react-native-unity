@@ -15,6 +15,8 @@
     "ios",
     "cpp",
     "unity",
+    "app.plugin.js",
+    "plugin/build",
     "*.podspec",
     "!ios/build",
     "!android/build",

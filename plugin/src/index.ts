@@ -44,20 +44,27 @@ const withProjectBuildGradleMod: ConfigPlugin = (config) =>
 
 const withSettingsGradleMod: ConfigPlugin = (config) =>
   withSettingsGradle(config, (modConfig) => {
-    modConfig.modResults.contents += `
+    if (!modConfig.modResults.contents.includes(':unityLibrary')) {
+      modConfig.modResults.contents += `
 include ':unityLibrary'
 project(':unityLibrary').projectDir=new File('../unity/builds/android/unityLibrary')
     `;
+    }
     return modConfig;
   });
 
 const withGradlePropertiesMod: ConfigPlugin = (config) =>
   withGradleProperties(config, (modConfig) => {
-    modConfig.modResults.push({
-      type: 'property',
-      key: 'unityStreamingAssets',
-      value: '.unity3d',
-    });
+    const alreadySet = modConfig.modResults.some(
+      (item) => item.type === 'property' && item.key === 'unityStreamingAssets'
+    );
+    if (!alreadySet) {
+      modConfig.modResults.push({
+        type: 'property',
+        key: 'unityStreamingAssets',
+        value: '.unity3d',
+      });
+    }
     return modConfig;
   });
 
