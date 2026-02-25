@@ -34,7 +34,7 @@
     "test": "jest",
     "typecheck": "tsc --noEmit",
     "lint": "eslint \"**/*.{js,ts,tsx}\"",
-    "clean": "del-cli android/build example/android/build example/android/app/build example/ios/build lib",
+    "clean": "del-cli android/build example/android/build example/android/app/build example/ios/build lib plugin/build",
     "prepare": "bob build",
     "pack": "del-cli azesmway-react-native-unity-1.0.11.tgz && npm pack",
     "release": "release-it"

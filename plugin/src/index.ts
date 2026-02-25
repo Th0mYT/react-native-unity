@@ -1,20 +1,16 @@
+import type { ConfigPlugin } from '@expo/config-plugins';
 import {
   AndroidConfig,
+  withDangerousMod,
   withGradleProperties,
   withProjectBuildGradle,
   withSettingsGradle,
   withStringsXml,
-  withDangerousMod,
 } from '@expo/config-plugins';
-import type { ConfigPlugin } from '@expo/config-plugins';
 import * as fs from 'fs';
 import * as path from 'path';
 
-const withUnity: ConfigPlugin<{ name?: string }> = (
-  config,
-  { name = 'react-native-unity' } = {}
-) => {
-  config.name = name;
+const withUnity: ConfigPlugin<{ name?: string }> = (config, {} = {}) => {
   config = withProjectBuildGradleMod(config);
   config = withSettingsGradleMod(config);
   config = withGradlePropertiesMod(config);
