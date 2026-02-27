@@ -10,7 +10,7 @@ import {
 import * as fs from 'fs';
 import * as path from 'path';
 
-const withUnity: ConfigPlugin<{ name?: string }> = (config, {} = {}) => {
+const withUnity: ConfigPlugin<{}> = (config, {} = {}) => {
   config = withProjectBuildGradleMod(config);
   config = withSettingsGradleMod(config);
   config = withGradlePropertiesMod(config);
@@ -23,7 +23,10 @@ const REPOSITORIES_END_LINE = `maven { url 'https://www.jitpack.io' }`;
 
 const withProjectBuildGradleMod: ConfigPlugin = (config) =>
   withProjectBuildGradle(config, (modConfig) => {
-    if (modConfig.modResults.contents.includes(REPOSITORIES_END_LINE)) {
+    if (
+      modConfig.modResults.contents.includes(REPOSITORIES_END_LINE) &&
+      !modConfig.modResults.contents.includes(':unityLibrary')
+    ) {
       // use the last known line in expo's build.gradle file to append the newline after
       modConfig.modResults.contents = modConfig.modResults.contents.replace(
         REPOSITORIES_END_LINE,
