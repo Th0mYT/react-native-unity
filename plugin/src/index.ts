@@ -33,10 +33,6 @@ const withProjectBuildGradleMod: ConfigPlugin = (config) =>
         REPOSITORIES_END_LINE +
           '\nflatDir { dirs "${project(\':unityLibrary\').projectDir}/libs" }\n'
       );
-    } else {
-      throw new Error(
-        'Failed to find the end of repositories in the android/build.gradle file`'
-      );
     }
     return modConfig;
   });
