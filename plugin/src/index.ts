@@ -42,7 +42,7 @@ const withProjectBuildGradleMod: ConfigPlugin = (config) =>
     // Insert exactly one entry after the anchor line
     modConfig.modResults.contents = modConfig.modResults.contents.replace(
       REPOSITORIES_END_LINE,
-      REPOSITORIES_END_LINE + '\n' + FLAT_DIR_LINE + '\n'
+      REPOSITORIES_END_LINE + '\n' + FLAT_DIR_LINE
     );
 
     return modConfig;
@@ -57,7 +57,8 @@ const withSettingsGradleMod: ConfigPlugin = (config) =>
     modConfig.modResults.contents = modConfig.modResults.contents
       .split('\n')
       .filter((line) => !line.includes('unityLibrary'))
-      .join('\n');
+      .join('\n')
+      .trimEnd();
 
     modConfig.modResults.contents += `\n${UNITY_INCLUDE}\n${UNITY_PROJECT_DIR}\n`;
 
