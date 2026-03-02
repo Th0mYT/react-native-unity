@@ -1,6 +1,7 @@
 import type { ConfigPlugin } from '@expo/config-plugins';
 import {
   AndroidConfig,
+  withAndroidManifest,
   withDangerousMod,
   withGradleProperties,
   withProjectBuildGradle,
@@ -15,36 +16,51 @@ const withUnity: ConfigPlugin<{}> = (config, {} = {}) => {
   config = withSettingsGradleMod(config);
   config = withGradlePropertiesMod(config);
   config = withStringsXMLMod(config);
+  config = withAndroidManifestMod(config);
   config = withIosFabricRegistration(config);
   return config;
 };
 
 const REPOSITORIES_END_LINE = `maven { url 'https://www.jitpack.io' }`;
+const FLAT_DIR_LINE =
+  'flatDir { dirs "${project(\':unityLibrary\').projectDir}/libs" }';
 
 const withProjectBuildGradleMod: ConfigPlugin = (config) =>
   withProjectBuildGradle(config, (modConfig) => {
-    if (
-      modConfig.modResults.contents.includes(REPOSITORIES_END_LINE) &&
-      !modConfig.modResults.contents.includes(':unityLibrary')
-    ) {
-      // use the last known line in expo's build.gradle file to append the newline after
-      modConfig.modResults.contents = modConfig.modResults.contents.replace(
-        REPOSITORIES_END_LINE,
-        REPOSITORIES_END_LINE +
-          '\nflatDir { dirs "${project(\':unityLibrary\').projectDir}/libs" }\n'
-      );
+    if (!modConfig.modResults.contents.includes(REPOSITORIES_END_LINE)) {
+      return modConfig;
     }
+
+    // Remove all existing entries to prevent duplicates
+    modConfig.modResults.contents = modConfig.modResults.contents
+      .split('\n')
+      .filter(
+        (line) => !(line.includes('flatDir') && line.includes('unityLibrary'))
+      )
+      .join('\n');
+
+    // Insert exactly one entry after the anchor line
+    modConfig.modResults.contents = modConfig.modResults.contents.replace(
+      REPOSITORIES_END_LINE,
+      REPOSITORIES_END_LINE + '\n' + FLAT_DIR_LINE + '\n'
+    );
+
     return modConfig;
   });
 
+const UNITY_INCLUDE = `include ':unityLibrary'`;
+const UNITY_PROJECT_DIR = `project(':unityLibrary').projectDir=new File('../unity/builds/android/unityLibrary')`;
+
 const withSettingsGradleMod: ConfigPlugin = (config) =>
   withSettingsGradle(config, (modConfig) => {
-    if (!modConfig.modResults.contents.includes(':unityLibrary')) {
-      modConfig.modResults.contents += `
-include ':unityLibrary'
-project(':unityLibrary').projectDir=new File('../unity/builds/android/unityLibrary')
-    `;
-    }
+    // Remove any existing unityLibrary entries to prevent duplicates or partial state
+    modConfig.modResults.contents = modConfig.modResults.contents
+      .split('\n')
+      .filter((line) => !line.includes('unityLibrary'))
+      .join('\n');
+
+    modConfig.modResults.contents += `\n${UNITY_INCLUDE}\n${UNITY_PROJECT_DIR}\n`;
+
     return modConfig;
   });
 
@@ -77,6 +93,28 @@ const withStringsXMLMod: ConfigPlugin = (config) =>
       ],
       modConfig.modResults
     );
+    return modConfig;
+  });
+
+const withAndroidManifestMod: ConfigPlugin = (config) =>
+  withAndroidManifest(config, (modConfig) => {
+    const manifest = modConfig.modResults.manifest;
+
+    // Ensure the tools namespace is declared on the root element
+    manifest.$['xmlns:tools'] = 'http://schemas.android.com/tools';
+
+    // Tell the manifest merger to use our app's value for this attribute,
+    // discarding the conflicting value declared by unityLibrary
+    const application = manifest.application?.[0];
+    if (application) {
+      const existing = application.$['tools:replace'] ?? '';
+      if (!existing.includes('android:enableOnBackInvokedCallback')) {
+        application.$['tools:replace'] = existing
+          ? `${existing},android:enableOnBackInvokedCallback`
+          : 'android:enableOnBackInvokedCallback';
+      }
+    }
+
     return modConfig;
   });
 
