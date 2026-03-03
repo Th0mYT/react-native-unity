@@ -3,6 +3,9 @@ package com.azesmwayreactnativeunity;
 import android.app.Activity;
 import android.graphics.PixelFormat;
 import android.os.Build;
+import android.os.Handler;
+import android.os.Looper;
+import android.util.Log;
 import android.view.ViewGroup;
 import android.view.WindowManager;
 
@@ -11,6 +14,7 @@ import static android.view.ViewGroup.LayoutParams.MATCH_PARENT;
 import java.lang.reflect.InvocationTargetException;
 
 public class ReactNativeUnity {
+    private static final String TAG = "ReactNativeUnity";
     private static UPlayer unityPlayer;
     public static boolean _isUnityReady;
     public static boolean _isUnityPaused;
@@ -44,43 +48,52 @@ public class ReactNativeUnity {
                 public void run() {
                     activity.getWindow().setFormat(PixelFormat.RGBA_8888);
                     int flag = activity.getWindow().getAttributes().flags;
-                    boolean fullScreen = false;
-                    if ((flag & WindowManager.LayoutParams.FLAG_FULLSCREEN) == WindowManager.LayoutParams.FLAG_FULLSCREEN) {
-                        fullScreen = true;
-                    }
+                    final boolean fullScreen = (flag & WindowManager.LayoutParams.FLAG_FULLSCREEN) == WindowManager.LayoutParams.FLAG_FULLSCREEN;
 
                     try {
                         unityPlayer = new UPlayer(activity, callback);
-                    } catch (ClassNotFoundException | InstantiationException | IllegalAccessException | InvocationTargetException e) {}
-
-                    try {
-                        // wait a moment. fix unity cannot start when startup.
-                        Thread.sleep(1000);
-                    } catch (Exception e) {}
-
-                    // start unity
-                    try {
-                        addUnityViewToBackground();
-                    } catch (InvocationTargetException | IllegalAccessException | NoSuchMethodException e) {}
-
-                    unityPlayer.windowFocusChanged(true);
-
-                    try {
-                        unityPlayer.requestFocusPlayer();
-                    } catch (NoSuchMethodException | IllegalAccessException | InvocationTargetException e) {}
-
-                    unityPlayer.resume();
-
-                    if (!fullScreen) {
-                        activity.getWindow().addFlags(WindowManager.LayoutParams.FLAG_FORCE_NOT_FULLSCREEN);
-                        activity.getWindow().clearFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN);
+                    } catch (ClassNotFoundException | InstantiationException | IllegalAccessException | InvocationTargetException | NoSuchMethodException e) {
+                        Log.e(TAG, "Failed to create UPlayer", e);
                     }
 
-                    _isUnityReady = true;
+                    if (unityPlayer == null) {
+                        return;
+                    }
 
-                    try {
-                        callback.onReady();
-                    } catch (InvocationTargetException | IllegalAccessException | NoSuchMethodException e) {}
+                    // wait a moment before starting unity to fix cannot-start-on-startup issue
+                    new Handler(Looper.getMainLooper()).postDelayed(new Runnable() {
+                        @Override
+                        public void run() {
+                            try {
+                                addUnityViewToBackground();
+                            } catch (InvocationTargetException | IllegalAccessException | NoSuchMethodException e) {
+                                Log.e(TAG, "addUnityViewToBackground failed", e);
+                            }
+
+                            unityPlayer.windowFocusChanged(true);
+
+                            try {
+                                unityPlayer.requestFocusPlayer();
+                            } catch (NoSuchMethodException | IllegalAccessException | InvocationTargetException e) {
+                                Log.e(TAG, "requestFocusPlayer failed", e);
+                            }
+
+                            unityPlayer.resume();
+
+                            if (!fullScreen) {
+                                activity.getWindow().addFlags(WindowManager.LayoutParams.FLAG_FORCE_NOT_FULLSCREEN);
+                                activity.getWindow().clearFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN);
+                            }
+
+                            _isUnityReady = true;
+
+                            try {
+                                callback.onReady();
+                            } catch (InvocationTargetException | IllegalAccessException | NoSuchMethodException e) {
+                                Log.e(TAG, "callback.onReady failed", e);
+                            }
+                        }
+                    }, 1000);
                 }
             });
         }
