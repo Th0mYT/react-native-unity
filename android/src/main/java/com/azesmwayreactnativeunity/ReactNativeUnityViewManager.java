@@ -162,7 +162,13 @@ public class ReactNativeUnityViewManager extends ReactNativeUnityViewManagerSpec
     if (view == null) { Log.e(TAG, "dispatchEvent: null view for " + eventName); return; }
     ReactContext ctx = (ReactContext) view.getContext();
     if (BuildConfig.IS_NEW_ARCHITECTURE_ENABLED) {
-      int surfaceId = UIManagerHelper.getSurfaceId(view);
+      int surfaceId;
+      try {
+        surfaceId = UIManagerHelper.getSurfaceId(view);
+      } catch (IllegalStateException e) {
+        Log.w(TAG, "dispatchEvent: view not attached to a Fabric surface, dropping " + eventName);
+        return;
+      }
       EventDispatcher ed = UIManagerHelper.getEventDispatcherForReactTag(ctx, view.getId());
       if (ed != null) ed.dispatchEvent(new UnityEvent(eventName, message, surfaceId, view.getId()));
       else Log.e(TAG, "No EventDispatcher for " + eventName);
