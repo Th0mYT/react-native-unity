@@ -3,29 +3,30 @@ package com.azesmwayreactnativeunity;
 import static com.azesmwayreactnativeunity.ReactNativeUnity.*;
 
 import android.os.Handler;
+import android.util.Log;
 import android.view.View;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 
 import com.facebook.infer.annotation.Assertions;
-import com.facebook.react.bridge.Arguments;
 import com.facebook.react.bridge.LifecycleEventListener;
 import com.facebook.react.bridge.ReactApplicationContext;
 import com.facebook.react.bridge.ReactContext;
 import com.facebook.react.bridge.ReadableArray;
-import com.facebook.react.bridge.WritableMap;
 import com.facebook.react.common.MapBuilder;
 import com.facebook.react.module.annotations.ReactModule;
 import com.facebook.react.uimanager.ThemedReactContext;
+import com.facebook.react.uimanager.UIManagerHelper;
 import com.facebook.react.uimanager.annotations.ReactProp;
-import com.facebook.react.uimanager.events.RCTEventEmitter;
+import com.facebook.react.uimanager.events.EventDispatcher;
 
 import java.lang.reflect.InvocationTargetException;
 import java.util.Map;
 
 @ReactModule(name = ReactNativeUnityViewManager.NAME)
 public class ReactNativeUnityViewManager extends ReactNativeUnityViewManagerSpec<ReactNativeUnityView> implements LifecycleEventListener, View.OnAttachStateChangeListener {
+  private static final String TAG = "ReactNativeUnity";
   ReactApplicationContext context;
   static ReactNativeUnityView view;
   public static final String NAME = "RNUnityView";
@@ -51,7 +52,9 @@ public class ReactNativeUnityViewManager extends ReactNativeUnityViewManagerSpec
     if (getPlayer() != null) {
         try {
             view.setUnityPlayer(getPlayer());
-        } catch (InvocationTargetException | NoSuchMethodException | IllegalAccessException e) {}
+        } catch (InvocationTargetException | NoSuchMethodException | IllegalAccessException e) {
+            Log.e(TAG, "setUnityPlayer failed", e);
+        }
     } else {
         try {
             createPlayer(context.getCurrentActivity(), new UnityPlayerCallback() {
@@ -62,21 +65,17 @@ public class ReactNativeUnityViewManager extends ReactNativeUnityViewManagerSpec
 
               @Override
               public void onUnload() {
-                WritableMap data = Arguments.createMap();
-                data.putString("message", "MyMessage");
-                ReactContext reactContext = (ReactContext) view.getContext();
-                reactContext.getJSModule(RCTEventEmitter.class).receiveEvent(view.getId(), "onPlayerUnload", data);
+                dispatchEvent(view, "onPlayerUnload", "");
               }
 
               @Override
               public void onQuit() {
-                WritableMap data = Arguments.createMap();
-                data.putString("message", "MyMessage");
-                ReactContext reactContext = (ReactContext) view.getContext();
-                reactContext.getJSModule(RCTEventEmitter.class).receiveEvent(view.getId(), "onPlayerQuit", data);
+                dispatchEvent(view, "onPlayerQuit", "");
               }
             });
-        } catch (InvocationTargetException | NoSuchMethodException | IllegalAccessException e) {}
+        } catch (InvocationTargetException | NoSuchMethodException | IllegalAccessException e) {
+            Log.e(TAG, "createPlayer failed", e);
+        }
     }
 
     return view;
@@ -139,8 +138,7 @@ public class ReactNativeUnityViewManager extends ReactNativeUnityViewManagerSpec
   @Override
   public void pauseUnity(ReactNativeUnityView view, boolean pause) {
     if (isUnityReady()) {
-      assert getPlayer() != null;
-      getPlayer().pause();
+      if (pause) { pause(); } else { resume(); }
     }
   }
 
@@ -160,17 +158,32 @@ public class ReactNativeUnityViewManager extends ReactNativeUnityViewManagerSpec
     }
   }
 
+  private static void dispatchEvent(ReactNativeUnityView view, String eventName, String message) {
+    if (view == null) { Log.e(TAG, "dispatchEvent: null view for " + eventName); return; }
+    ReactContext ctx = (ReactContext) view.getContext();
+    if (BuildConfig.IS_NEW_ARCHITECTURE_ENABLED) {
+      int surfaceId = UIManagerHelper.getSurfaceId(view);
+      EventDispatcher ed = UIManagerHelper.getEventDispatcherForReactTag(ctx, view.getId());
+      if (ed != null) ed.dispatchEvent(new UnityEvent(eventName, message, surfaceId, view.getId()));
+      else Log.e(TAG, "No EventDispatcher for " + eventName);
+    } else {
+      com.facebook.react.bridge.WritableMap data = com.facebook.react.bridge.Arguments.createMap();
+      data.putString("message", message);
+      ctx.getJSModule(com.facebook.react.uimanager.events.RCTEventEmitter.class)
+         .receiveEvent(view.getId(), eventName, data);
+    }
+  }
+
   public static void sendMessageToMobileApp(String message) {
-    WritableMap data = Arguments.createMap();
-    data.putString("message", message);
-    ReactContext reactContext = (ReactContext) view.getContext();
-    reactContext.getJSModule(RCTEventEmitter.class).receiveEvent(view.getId(), "onUnityMessage", data);
+    if (view == null) { return; }
+    dispatchEvent(view, "onUnityMessage", message);
   }
 
   @Override
   public void onDropViewInstance(ReactNativeUnityView view) {
     view.removeOnAttachStateChangeListener(this);
     super.onDropViewInstance(view);
+    if (ReactNativeUnityViewManager.view == view) { ReactNativeUnityViewManager.view = null; }
   }
 
   @Override
