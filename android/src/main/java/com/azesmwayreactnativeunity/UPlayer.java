@@ -13,7 +13,7 @@ import java.lang.reflect.Method;
 public class UPlayer {
     private static UnityPlayer unityPlayer;
 
-    public UPlayer(final Activity activity, final ReactNativeUnity.UnityPlayerCallback callback) throws ClassNotFoundException, InvocationTargetException, IllegalAccessException, InstantiationException {
+    public UPlayer(final Activity activity, final ReactNativeUnity.UnityPlayerCallback callback) throws ClassNotFoundException, InvocationTargetException, IllegalAccessException, InstantiationException, NoSuchMethodException {
         super();
         Class<?> _player = null;
 
@@ -23,7 +23,17 @@ public class UPlayer {
             _player = Class.forName("com.unity3d.player.UnityPlayer");
         }
 
-        Constructor<?> constructor = _player.getConstructors()[1];
+        Constructor<?> constructor = null;
+        for (Constructor<?> c : _player.getConstructors()) {
+            Class<?>[] params = c.getParameterTypes();
+            if (params.length == 2 && params[1].isAssignableFrom(IUnityPlayerLifecycleEvents.class)) {
+                constructor = c;
+                break;
+            }
+        }
+        if (constructor == null) {
+            throw new NoSuchMethodException("No matching UnityPlayer constructor found");
+        }
         unityPlayer = (UnityPlayer) constructor.newInstance(activity, new IUnityPlayerLifecycleEvents() {
             @Override
             public void onUnityPlayerUnloaded() {
@@ -103,7 +113,7 @@ public class UPlayer {
 
     public void setZ(float v) throws NoSuchMethodException, InvocationTargetException, IllegalAccessException {
         try {
-            Method setZ = unityPlayer.getClass().getMethod("setZ");
+            Method setZ = unityPlayer.getClass().getMethod("setZ", float.class);
 
             setZ.invoke(unityPlayer, v);
         } catch (NoSuchMethodException e) {}
