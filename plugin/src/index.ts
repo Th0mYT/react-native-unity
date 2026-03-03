@@ -1,66 +1,89 @@
+import type { ConfigPlugin } from '@expo/config-plugins';
 import {
   AndroidConfig,
+  withAndroidManifest,
+  withDangerousMod,
   withGradleProperties,
   withProjectBuildGradle,
   withSettingsGradle,
   withStringsXml,
 } from '@expo/config-plugins';
-import type { ConfigPlugin } from '@expo/config-plugins';
+import * as fs from 'fs';
+import * as path from 'path';
 
-const withUnity: ConfigPlugin<{ name?: string }> = (
-  config,
-  { name = 'react-native-unity' } = {}
-) => {
-  config.name = name;
+const withUnity: ConfigPlugin<{}> = (config, {} = {}) => {
   config = withProjectBuildGradleMod(config);
   config = withSettingsGradleMod(config);
   config = withGradlePropertiesMod(config);
   config = withStringsXMLMod(config);
+  config = withAndroidManifestMod(config);
+  config = withIosFabricRegistration(config);
   return config;
 };
 
 const REPOSITORIES_END_LINE = `maven { url 'https://www.jitpack.io' }`;
+const FLAT_DIR_LINE =
+  'flatDir { dirs "${project(\':unityLibrary\').projectDir}/libs" }';
 
 const withProjectBuildGradleMod: ConfigPlugin = (config) =>
   withProjectBuildGradle(config, (modConfig) => {
-    if (modConfig.modResults.contents.includes(REPOSITORIES_END_LINE)) {
-      // use the last known line in expo's build.gradle file to append the newline after
-      modConfig.modResults.contents = modConfig.modResults.contents.replace(
-        REPOSITORIES_END_LINE,
-        REPOSITORIES_END_LINE +
-          '\nflatDir { dirs "${project(\':unityLibrary\').projectDir}/libs" }\n'
-      );
-    } else {
-      throw new Error(
-        'Failed to find the end of repositories in the android/build.gradle file`'
-      );
+    if (!modConfig.modResults.contents.includes(REPOSITORIES_END_LINE)) {
+      return modConfig;
     }
+
+    // Remove all existing entries to prevent duplicates
+    modConfig.modResults.contents = modConfig.modResults.contents
+      .split('\n')
+      .filter(
+        (line) => !(line.includes('flatDir') && line.includes('unityLibrary'))
+      )
+      .join('\n');
+
+    // Insert exactly one entry after the anchor line
+    modConfig.modResults.contents = modConfig.modResults.contents.replace(
+      REPOSITORIES_END_LINE,
+      REPOSITORIES_END_LINE + '\n' + FLAT_DIR_LINE
+    );
+
     return modConfig;
   });
 
+const UNITY_INCLUDE = `include ':unityLibrary'`;
+const UNITY_PROJECT_DIR = `project(':unityLibrary').projectDir=new File('../unity/builds/android/unityLibrary')`;
+
 const withSettingsGradleMod: ConfigPlugin = (config) =>
   withSettingsGradle(config, (modConfig) => {
-    modConfig.modResults.contents += `
-include ':unityLibrary'
-project(':unityLibrary').projectDir=new File('../unity/builds/android/unityLibrary')
-    `;
+    // Remove any existing unityLibrary entries to prevent duplicates or partial state
+    modConfig.modResults.contents = modConfig.modResults.contents
+      .split('\n')
+      .filter((line) => !line.includes('unityLibrary'))
+      .join('\n')
+      .trimEnd();
+
+    modConfig.modResults.contents += `\n${UNITY_INCLUDE}\n${UNITY_PROJECT_DIR}\n`;
+
     return modConfig;
   });
 
 const withGradlePropertiesMod: ConfigPlugin = (config) =>
   withGradleProperties(config, (modConfig) => {
-    modConfig.modResults.push({
-      type: 'property',
-      key: 'unityStreamingAssets',
-      value: '.unity3d',
-    });
+    const alreadySet = modConfig.modResults.some(
+      (item) => item.type === 'property' && item.key === 'unityStreamingAssets'
+    );
+    if (!alreadySet) {
+      modConfig.modResults.push({
+        type: 'property',
+        key: 'unityStreamingAssets',
+        value: '.unity3d',
+      });
+    }
     return modConfig;
   });
 
 // add string
 const withStringsXMLMod: ConfigPlugin = (config) =>
-  withStringsXml(config, (config) => {
-    config.modResults = AndroidConfig.Strings.setStringItem(
+  withStringsXml(config, (modConfig) => {
+    modConfig.modResults = AndroidConfig.Strings.setStringItem(
       [
         {
           _: 'Game View',
@@ -69,9 +92,90 @@ const withStringsXMLMod: ConfigPlugin = (config) =>
           },
         },
       ],
-      config.modResults
+      modConfig.modResults
     );
-    return config;
+    return modConfig;
   });
+
+const withAndroidManifestMod: ConfigPlugin = (config) =>
+  withAndroidManifest(config, (modConfig) => {
+    const manifest = modConfig.modResults.manifest;
+
+    // Ensure the tools namespace is declared on the root element
+    manifest.$['xmlns:tools'] = 'http://schemas.android.com/tools';
+
+    // Tell the manifest merger to use our app's value for this attribute,
+    // discarding the conflicting value declared by unityLibrary
+    const application = manifest.application?.[0];
+    if (application) {
+      const existing = application.$['tools:replace'] ?? '';
+      if (!existing.includes('android:enableOnBackInvokedCallback')) {
+        application.$['tools:replace'] = existing
+          ? `${existing},android:enableOnBackInvokedCallback`
+          : 'android:enableOnBackInvokedCallback';
+      }
+    }
+
+    return modConfig;
+  });
+
+// Patches RCTThirdPartyComponentsProvider.mm (generated by expo prebuild) to register
+// RNUnityView with Fabric's component registry so that updateProps is dispatched correctly.
+const withIosFabricRegistration: ConfigPlugin = (config) =>
+  withDangerousMod(config, [
+    'ios',
+    (modConfig) => {
+      const iosRoot = modConfig.modRequest.platformProjectRoot;
+      const projectName = modConfig.modRequest.projectName ?? '';
+
+      // The file may be at the ios/ root or inside ios/<AppName>/
+      const candidates = [
+        path.join(iosRoot, 'RCTThirdPartyComponentsProvider.mm'),
+        path.join(iosRoot, projectName, 'RCTThirdPartyComponentsProvider.mm'),
+      ];
+
+      const providerPath = candidates.find((p) => fs.existsSync(p));
+      if (!providerPath) {
+        console.warn(
+          '[react-native-unity] RCTThirdPartyComponentsProvider.mm not found. ' +
+            'RNUnityView may not be registered with Fabric. ' +
+            'Run `npx expo prebuild` again after the initial build.'
+        );
+        return modConfig;
+      }
+
+      let contents = fs.readFileSync(providerPath, 'utf-8');
+
+      const dictEntry = `@"RNUnityView" : RNUnityViewCls(),`;
+
+      // Nothing to do if already patched
+      if (contents.includes(dictEntry)) {
+        return modConfig;
+      }
+
+      const forwardDecl =
+        'Class<RCTComponentViewProtocol> RNUnityViewCls(void);';
+
+      // Insert forward declaration before @implementation
+      if (!contents.includes(forwardDecl)) {
+        contents = contents.replace(
+          /(@implementation RCTThirdPartyComponentsProvider)/,
+          `${forwardDecl}\n\n$1`
+        );
+      }
+
+      // Insert dictionary entry before the closing }; of the components dict.
+      // The dict sits inside a dispatch_once block so the unique pattern is:
+      //   (indent)};(whitespace)});
+      contents = contents.replace(
+        /([ \t]*)(};)([ \t]*\n[ \t]*\}\);)/,
+        `$1  ${dictEntry}\n$1$2$3`
+      );
+
+      fs.writeFileSync(providerPath, contents, 'utf-8');
+
+      return modConfig;
+    },
+  ]);
 
 export default withUnity;

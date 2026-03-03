@@ -1,12 +1,9 @@
 {
   "name": "@azesmway/react-native-unity",
-  "version": "1.0.12",
+  "version": "1.0.13",
   "description": "React Native Unity",
   "main": "lib/commonjs/index",
   "module": "lib/module/index",
-  "expo": {
-    "plugin": "./plugin/withUnityFramework.js"
-  },
   "types": "lib/typescript/index.d.ts",
   "react-native": "src/index",
   "source": "src/index",
@@ -17,6 +14,8 @@
     "ios",
     "cpp",
     "unity",
+    "app.plugin.js",
+    "plugin/build",
     "*.podspec",
     "!ios/build",
     "!android/build",
@@ -34,8 +33,10 @@
     "test": "jest",
     "typecheck": "tsc --noEmit",
     "lint": "eslint \"**/*.{js,ts,tsx}\"",
-    "clean": "del-cli android/build example/android/build example/android/app/build example/ios/build lib",
-    "prepare": "bob build",
+    "build:plugin": "tsc --project plugin/tsconfig.json",
+    "clean": "del-cli android/build example/android/build example/android/app/build example/ios/build lib plugin/build",
+    "prepare": "bob build && yarn build:plugin",
+    "pack": "npm pack",
     "release": "release-it"
   },
   "keywords": [

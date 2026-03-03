@@ -187,6 +187,11 @@ static RNUnityView *sharedInstance;
         gridViewEventEmitter->onUnityMessage(event);
       }
     };
+
+    // Start Unity immediately, don't wait for updateProps
+    if (![self unityIsInitialized]) {
+        [self initUnityModule];
+    }
   }
 
   return self;

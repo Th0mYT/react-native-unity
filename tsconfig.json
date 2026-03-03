@@ -2,7 +2,8 @@
   "compilerOptions": {
     "baseUrl": "./",
     "paths": {
-      "@azesmway/react-native-unity": ["./src/index"]
+      "@azesmway/react-native-unity": ["./src/index"],
+      "@azesmway/react-native-unity/plugin": ["./plugin/src/index"],
     },
     "allowUnreachableCode": false,
     "allowUnusedLabels": false,
