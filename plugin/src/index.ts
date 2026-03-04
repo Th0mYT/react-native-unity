@@ -104,10 +104,16 @@ const withAndroidManifestMod: ConfigPlugin = (config) =>
     // Ensure the tools namespace is declared on the root element
     manifest.$['xmlns:tools'] = 'http://schemas.android.com/tools';
 
-    // Tell the manifest merger to use our app's value for this attribute,
-    // discarding the conflicting value declared by unityLibrary
+    // Opt the app OUT of predictive back gesture.
+    // unityLibrary sets android:enableOnBackInvokedCallback="true", but
+    // android.window.OnBackInvokedCallback only exists on API 33+. On older
+    // devices Unity's player crashes at init when it tries to load that class.
+    // We explicitly set the attribute to "false" and use tools:replace so the
+    // manifest merger discards unityLibrary's conflicting value.
     const application = manifest.application?.[0];
     if (application) {
+      application.$['android:enableOnBackInvokedCallback'] = 'false';
+
       const existing = application.$['tools:replace'] ?? '';
       if (!existing.includes('android:enableOnBackInvokedCallback')) {
         application.$['tools:replace'] = existing
