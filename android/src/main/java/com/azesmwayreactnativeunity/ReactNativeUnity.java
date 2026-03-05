@@ -174,6 +174,45 @@ public class ReactNativeUnity {
         }
         group.addView(frame, 0, layoutParams);
 
+        // Hook directly into surfaceCreated so resume() is called exactly when the
+        // SurfaceView's surface is ready after reparenting. A fixed delay is unreliable:
+        // the async window-manager IPC for surface creation can take longer than 100ms,
+        // causing a black screen because resume() fires before any surface exists.
+        final android.view.SurfaceView sv = findSurfaceViewInFrame(frame);
+        if (sv != null) {
+            if (sv.getHolder().getSurface().isValid()) {
+                // Surface already exists (e.g. first mount where background had a 1x1 surface).
+                Log.d(TAG, "addUnityViewToGroup: surface already valid, resuming directly");
+                unityPlayer.resume();
+            } else {
+                sv.getHolder().addCallback(new android.view.SurfaceHolder.Callback() {
+                    @Override
+                    public void surfaceCreated(android.view.SurfaceHolder holder) {
+                        sv.getHolder().removeCallback(this);
+                        Log.d(TAG, "addUnityViewToGroup: surfaceCreated fired, resuming Unity");
+                        new Handler(Looper.getMainLooper()).post(new Runnable() {
+                            @Override
+                            public void run() {
+                                if (unityPlayer != null) unityPlayer.resume();
+                            }
+                        });
+                    }
+                    @Override public void surfaceChanged(android.view.SurfaceHolder h, int f, int w, int ht) {}
+                    @Override public void surfaceDestroyed(android.view.SurfaceHolder h) {}
+                });
+            }
+        } else {
+            // No SurfaceView found in the hierarchy (newer Unity with TextureView or similar).
+            // Fall back to a generous fixed delay to let the surface settle.
+            Log.w(TAG, "addUnityViewToGroup: no SurfaceView found, falling back to delayed resume");
+            new Handler(Looper.getMainLooper()).postDelayed(new Runnable() {
+                @Override
+                public void run() {
+                    if (unityPlayer != null) unityPlayer.resume();
+                }
+            }, 300);
+        }
+
         // In Fabric (New Architecture), parent views can intercept requestLayout() so Unity's
         // frame may never receive its dimensions. Force bounds explicitly once the group has a
         // valid size. Use OnGlobalLayoutListener as fallback if dimensions aren't ready yet.
@@ -205,19 +244,20 @@ public class ReactNativeUnity {
 
         unityPlayer.windowFocusChanged(true);
         unityPlayer.requestFocusPlayer();
-        // Delay resume so SurfaceView.surfaceCreated() can fire before Unity starts rendering.
-        // Calling resume() synchronously here causes a black screen on second mount because
-        // the SurfaceView has just been re-parented and its surface doesn't exist yet.
-        // Background/foreground then fixes it because onHostResume() calls resume() after
-        // surfaceCreated(). A short delay gives the surface time to be created first.
-        new Handler(Looper.getMainLooper()).postDelayed(new Runnable() {
-            @Override
-            public void run() {
-                if (unityPlayer != null) {
-                    unityPlayer.resume();
-                }
+    }
+
+    private static android.view.SurfaceView findSurfaceViewInFrame(android.view.View view) {
+        if (view instanceof android.view.SurfaceView) {
+            return (android.view.SurfaceView) view;
+        }
+        if (view instanceof android.view.ViewGroup) {
+            android.view.ViewGroup vg = (android.view.ViewGroup) view;
+            for (int i = 0; i < vg.getChildCount(); i++) {
+                android.view.SurfaceView sv = findSurfaceViewInFrame(vg.getChildAt(i));
+                if (sv != null) return sv;
             }
-        }, 100);
+        }
+        return null;
     }
 
     public interface UnityPlayerCallback {
