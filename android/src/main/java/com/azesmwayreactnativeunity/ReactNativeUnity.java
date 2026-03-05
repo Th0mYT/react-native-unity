@@ -169,38 +169,56 @@ public class ReactNativeUnity {
         final android.widget.FrameLayout frame = unityPlayer.requestFrame();
         // Reset z-elevation that was set to -1 in addUnityViewToBackground so Unity is visible.
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-            frame.setZ(0f);
-            unityPlayer.setZ(0f);
+            frame.setZ(1f);
+            unityPlayer.setZ(1f);
         }
         group.addView(frame, 0, layoutParams);
 
-        // Hook directly into surfaceCreated so resume() is called exactly when the
-        // SurfaceView's surface is ready after reparenting. A fixed delay is unreliable:
-        // the async window-manager IPC for surface creation can take longer than 100ms,
-        // causing a black screen because resume() fires before any surface exists.
+        // Resume Unity only after:
+        //   1. surfaceCreated fires  — SurfaceView has a valid rendering surface
+        //   2. frame.post() exits the current traversal — so the next Choreographer pass runs
+        //   3. OnPreDrawListener fires — SurfaceView's own listener fires FIRST (registered
+        //      earlier during onAttachedToWindow) and updates the compositor with the correct
+        //      window position. Without this, Unity renders but the "hole" is at the stale
+        //      1×1 background position, making it invisible under React Native views.
+        //
+        // frame.layout() below (in group.post) triggers SurfaceView.onSizeChanged →
+        // updateSurface() IPC → surfaceCreated, so our callback fires even when the surface
+        // was previously valid at 1×1 (size change always causes a surfaceDestroyed/Created).
         final android.view.SurfaceView sv = findSurfaceViewInFrame(frame);
         if (sv != null) {
-            if (sv.getHolder().getSurface().isValid()) {
-                // Surface already exists (e.g. first mount where background had a 1x1 surface).
-                Log.d(TAG, "addUnityViewToGroup: surface already valid, resuming directly");
-                unityPlayer.resume();
-            } else {
-                sv.getHolder().addCallback(new android.view.SurfaceHolder.Callback() {
-                    @Override
-                    public void surfaceCreated(android.view.SurfaceHolder holder) {
-                        sv.getHolder().removeCallback(this);
-                        Log.d(TAG, "addUnityViewToGroup: surfaceCreated fired, resuming Unity");
-                        new Handler(Looper.getMainLooper()).post(new Runnable() {
-                            @Override
-                            public void run() {
+            sv.getHolder().addCallback(new android.view.SurfaceHolder.Callback() {
+                @Override
+                public void surfaceCreated(android.view.SurfaceHolder holder) {
+                    sv.getHolder().removeCallback(this);
+                    // Exit the current traversal so the Choreographer runs its next pass.
+                    frame.post(new Runnable() {
+                        @Override
+                        public void run() {
+                            // SurfaceView's OnPreDrawListener was registered during
+                            // onAttachedToWindow (before this code), so it fires first,
+                            // updating the compositor position. Our listener fires after
+                            // and calls resume() with the correct position already set.
+                            android.view.ViewTreeObserver vto = frame.getViewTreeObserver();
+                            if (vto.isAlive()) {
+                                vto.addOnPreDrawListener(new android.view.ViewTreeObserver.OnPreDrawListener() {
+                                    @Override
+                                    public boolean onPreDraw() {
+                                        frame.getViewTreeObserver().removeOnPreDrawListener(this);
+                                        Log.d(TAG, "addUnityViewToGroup: surface ready + pre-draw, resuming Unity");
+                                        if (unityPlayer != null) unityPlayer.resume();
+                                        return true;
+                                    }
+                                });
+                            } else {
                                 if (unityPlayer != null) unityPlayer.resume();
                             }
-                        });
-                    }
-                    @Override public void surfaceChanged(android.view.SurfaceHolder h, int f, int w, int ht) {}
-                    @Override public void surfaceDestroyed(android.view.SurfaceHolder h) {}
-                });
-            }
+                        }
+                    });
+                }
+                @Override public void surfaceChanged(android.view.SurfaceHolder h, int f, int w, int ht) {}
+                @Override public void surfaceDestroyed(android.view.SurfaceHolder h) {}
+            });
         } else {
             // No SurfaceView found in the hierarchy (newer Unity with TextureView or similar).
             // Fall back to a generous fixed delay to let the surface settle.
