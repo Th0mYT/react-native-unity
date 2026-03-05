@@ -46,7 +46,9 @@ public class ReactNativeUnityViewManager extends ReactNativeUnityViewManagerSpec
   @NonNull
   @Override
   public ReactNativeUnityView createViewInstance(@NonNull ThemedReactContext context) {
-    view = new ReactNativeUnityView(this.context);
+    // Use ThemedReactContext (not ReactApplicationContext) so Fabric can correctly associate
+    // this view with its surface and apply layout dimensions via Yoga.
+    view = new ReactNativeUnityView(context);
     view.addOnAttachStateChangeListener(this);
 
     if (getPlayer() != null) {
@@ -160,14 +162,24 @@ public class ReactNativeUnityViewManager extends ReactNativeUnityViewManagerSpec
 
   private static void dispatchEvent(ReactNativeUnityView view, String eventName, String message) {
     if (view == null) { Log.e(TAG, "dispatchEvent: null view for " + eventName); return; }
-    ReactContext ctx = (ReactContext) view.getContext();
+    android.content.Context viewCtx = view.getContext();
+    ReactContext ctx = (ReactContext) viewCtx;
     if (BuildConfig.IS_NEW_ARCHITECTURE_ENABLED) {
       int surfaceId;
       try {
+        // Primary: walk the view's parent chain to find the ReactRoot.
         surfaceId = UIManagerHelper.getSurfaceId(view);
       } catch (IllegalStateException e) {
-        Log.w(TAG, "dispatchEvent: view not attached to a Fabric surface, dropping " + eventName);
-        return;
+        // UIManagerHelper walks the view hierarchy which can fail if Unity's frame reparenting
+        // detached the view from its Fabric root. Use ThemedReactContext.getSurfaceId() directly
+        // since it holds the surface ID assigned at view creation time.
+        if (viewCtx instanceof ThemedReactContext) {
+          surfaceId = ((ThemedReactContext) viewCtx).getSurfaceId();
+          Log.d(TAG, "dispatchEvent: surfaceId from ThemedReactContext=" + surfaceId + " for " + eventName);
+        } else {
+          Log.w(TAG, "dispatchEvent: no surfaceId available for " + eventName + ", dropping");
+          return;
+        }
       }
       EventDispatcher ed = UIManagerHelper.getEventDispatcherForReactTag(ctx, view.getId());
       if (ed != null) ed.dispatchEvent(new UnityEvent(eventName, message, surfaceId, view.getId()));

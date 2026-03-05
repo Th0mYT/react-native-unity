@@ -169,14 +169,31 @@ public class ReactNativeUnity {
         final android.widget.FrameLayout frame = unityPlayer.requestFrame();
         group.addView(frame, 0, layoutParams);
 
-        // In Fabric (New Architecture), parent views can intercept requestLayout() to prevent
-        // unwanted re-runs, so the Unity frame may never receive its dimensions from a standard
-        // layout traversal. Post a forced layout so Unity's SurfaceView gets a valid frame.
+        // In Fabric (New Architecture), parent views can intercept requestLayout() so Unity's
+        // frame may never receive its dimensions. Force bounds explicitly once the group has a
+        // valid size. Use OnGlobalLayoutListener as fallback if dimensions aren't ready yet.
         group.post(new Runnable() {
             @Override
             public void run() {
-                if (group.getWidth() > 0 && group.getHeight() > 0) {
-                    frame.layout(0, 0, group.getWidth(), group.getHeight());
+                int w = group.getWidth();
+                int h = group.getHeight();
+                Log.d(TAG, "addUnityViewToGroup post: group=" + w + "x" + h);
+                if (w > 0 && h > 0) {
+                    frame.layout(0, 0, w, h);
+                } else {
+                    Log.w(TAG, "addUnityViewToGroup: group has no size yet, deferring via OnGlobalLayoutListener");
+                    group.getViewTreeObserver().addOnGlobalLayoutListener(new android.view.ViewTreeObserver.OnGlobalLayoutListener() {
+                        @Override
+                        public void onGlobalLayout() {
+                            int w2 = group.getWidth();
+                            int h2 = group.getHeight();
+                            if (w2 > 0 && h2 > 0) {
+                                group.getViewTreeObserver().removeOnGlobalLayoutListener(this);
+                                frame.layout(0, 0, w2, h2);
+                                Log.d(TAG, "addUnityViewToGroup deferred layout applied: " + w2 + "x" + h2);
+                            }
+                        }
+                    });
                 }
             }
         });
