@@ -167,6 +167,11 @@ public class ReactNativeUnity {
 
         ViewGroup.LayoutParams layoutParams = new ViewGroup.LayoutParams(MATCH_PARENT, MATCH_PARENT);
         final android.widget.FrameLayout frame = unityPlayer.requestFrame();
+        // Reset z-elevation that was set to -1 in addUnityViewToBackground so Unity is visible.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+            frame.setZ(0f);
+            unityPlayer.setZ(0f);
+        }
         group.addView(frame, 0, layoutParams);
 
         // In Fabric (New Architecture), parent views can intercept requestLayout() so Unity's
@@ -200,7 +205,19 @@ public class ReactNativeUnity {
 
         unityPlayer.windowFocusChanged(true);
         unityPlayer.requestFocusPlayer();
-        unityPlayer.resume();
+        // Delay resume so SurfaceView.surfaceCreated() can fire before Unity starts rendering.
+        // Calling resume() synchronously here causes a black screen on second mount because
+        // the SurfaceView has just been re-parented and its surface doesn't exist yet.
+        // Background/foreground then fixes it because onHostResume() calls resume() after
+        // surfaceCreated(). A short delay gives the surface time to be created first.
+        new Handler(Looper.getMainLooper()).postDelayed(new Runnable() {
+            @Override
+            public void run() {
+                if (unityPlayer != null) {
+                    unityPlayer.resume();
+                }
+            }
+        }, 100);
     }
 
     public interface UnityPlayerCallback {
