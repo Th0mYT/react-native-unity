@@ -59,6 +59,12 @@ public class ReactNativeUnityView extends FrameLayout {
   @Override
   protected void onDetachedFromWindow() {
     if (!this.keepPlayerMounted) {
+        // Pause Unity before moving to background so the render thread stops
+        // producing frames before the surface is destroyed, preventing:
+        // BufferQueueProducer disconnect: not connected
+        if (view != null) {
+            view.pause();
+        }
         try {
             addUnityViewToBackground();
         } catch (InvocationTargetException | NoSuchMethodException | IllegalAccessException e) {
