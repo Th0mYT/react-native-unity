@@ -37,8 +37,19 @@ public class ReactNativeUnity {
 
     public static void createPlayer(final Activity activity, final UnityPlayerCallback callback) throws InvocationTargetException, NoSuchMethodException, IllegalAccessException {
         if (unityPlayer != null) {
-            callback.onReady();
-
+            // Post to main thread: in Fabric (new arch) createViewInstance runs on a
+            // background thread, so calling onReady() (which calls addUnityViewToGroup)
+            // directly would modify the view hierarchy off the main thread.
+            new Handler(Looper.getMainLooper()).post(new Runnable() {
+                @Override
+                public void run() {
+                    try {
+                        callback.onReady();
+                    } catch (InvocationTargetException | IllegalAccessException | NoSuchMethodException e) {
+                        Log.e(TAG, "callback.onReady failed (early return)", e);
+                    }
+                }
+            });
             return;
         }
 

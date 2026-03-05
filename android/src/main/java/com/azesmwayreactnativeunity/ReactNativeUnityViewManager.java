@@ -182,7 +182,15 @@ public class ReactNativeUnityViewManager extends ReactNativeUnityViewManagerSpec
 
   public static void sendMessageToMobileApp(String message) {
     if (view == null) { return; }
-    dispatchEvent(view, "onUnityMessage", message);
+    // Unity calls this from its own native thread. UIManagerHelper calls in dispatchEvent
+    // are not thread-safe from non-main threads, so post to the main thread.
+    final ReactNativeUnityView currentView = view;
+    new Handler(android.os.Looper.getMainLooper()).post(new Runnable() {
+      @Override
+      public void run() {
+        if (currentView != null) dispatchEvent(currentView, "onUnityMessage", message);
+      }
+    });
   }
 
   @Override
