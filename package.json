@@ -36,7 +36,7 @@
     "build:plugin": "tsc --project plugin/tsconfig.json",
     "clean": "del-cli android/build example/android/build example/android/app/build example/ios/build lib plugin/build",
     "prepare": "bob build && yarn build:plugin",
-    "pack": "npm pack",
+    "pack": "npm run clean && npm run prepare && npm pack",
     "release": "release-it"
   },
   "keywords": [
