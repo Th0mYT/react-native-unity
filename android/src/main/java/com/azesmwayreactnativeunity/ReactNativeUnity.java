@@ -166,7 +166,21 @@ public class ReactNativeUnity {
         }
 
         ViewGroup.LayoutParams layoutParams = new ViewGroup.LayoutParams(MATCH_PARENT, MATCH_PARENT);
-        group.addView(unityPlayer.requestFrame(), 0, layoutParams);
+        final android.widget.FrameLayout frame = unityPlayer.requestFrame();
+        group.addView(frame, 0, layoutParams);
+
+        // In Fabric (New Architecture), parent views can intercept requestLayout() to prevent
+        // unwanted re-runs, so the Unity frame may never receive its dimensions from a standard
+        // layout traversal. Post a forced layout so Unity's SurfaceView gets a valid frame.
+        group.post(new Runnable() {
+            @Override
+            public void run() {
+                if (group.getWidth() > 0 && group.getHeight() > 0) {
+                    frame.layout(0, 0, group.getWidth(), group.getHeight());
+                }
+            }
+        });
+
         unityPlayer.windowFocusChanged(true);
         unityPlayer.requestFocusPlayer();
         unityPlayer.resume();
