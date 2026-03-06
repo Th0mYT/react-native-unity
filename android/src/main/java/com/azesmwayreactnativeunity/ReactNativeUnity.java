@@ -206,9 +206,25 @@ public class ReactNativeUnity {
         // was previously valid at 1×1 (size change always causes a surfaceDestroyed/Created).
         final android.view.SurfaceView sv = findSurfaceViewInFrame(frame);
         if (sv != null) {
+            // Timeout fallback: if surfaceCreated never fires (e.g. SurfaceView never gets a
+            // valid frame on some Android versions), resume Unity anyway after 2 seconds so it
+            // is not left permanently paused. The flag prevents a double-resume if the callback
+            // does fire normally.
+            final boolean[] surfaceCreatedFired = {false};
+            new Handler(Looper.getMainLooper()).postDelayed(new Runnable() {
+                @Override
+                public void run() {
+                    if (!surfaceCreatedFired[0]) {
+                        Log.w(TAG, "addUnityViewToGroup: surfaceCreated timeout — resuming Unity as fallback");
+                        if (unityPlayer != null) unityPlayer.resume();
+                    }
+                }
+            }, 2000);
+
             sv.getHolder().addCallback(new android.view.SurfaceHolder.Callback() {
                 @Override
                 public void surfaceCreated(android.view.SurfaceHolder holder) {
+                    surfaceCreatedFired[0] = true;
                     sv.getHolder().removeCallback(this);
                     // Exit the current traversal so the Choreographer runs its next pass.
                     frame.post(new Runnable() {
@@ -253,6 +269,12 @@ public class ReactNativeUnity {
         // In Fabric (New Architecture), parent views can intercept requestLayout() so Unity's
         // frame may never receive its dimensions. Force bounds explicitly once the group has a
         // valid size. Use OnGlobalLayoutListener as fallback if dimensions aren't ready yet.
+        //
+        // IMPORTANT: frame.measure() must precede frame.layout(). FrameLayout.onLayout()
+        // positions children using their *measured* dimensions; if the frame was never
+        // measured its children report measuredWidth/Height == 0, so SurfaceView.onSizeChanged
+        // is never called, mHaveFrame stays false, updateSurface() returns early, and
+        // surfaceCreated never fires — leaving Unity paused with no surface (Android 16).
         group.post(new Runnable() {
             @Override
             public void run() {
@@ -260,6 +282,10 @@ public class ReactNativeUnity {
                 int h = group.getHeight();
                 Log.d(TAG, "addUnityViewToGroup post: group=" + w + "x" + h);
                 if (w > 0 && h > 0) {
+                    frame.measure(
+                        android.view.View.MeasureSpec.makeMeasureSpec(w, android.view.View.MeasureSpec.EXACTLY),
+                        android.view.View.MeasureSpec.makeMeasureSpec(h, android.view.View.MeasureSpec.EXACTLY)
+                    );
                     frame.layout(0, 0, w, h);
                 } else {
                     Log.w(TAG, "addUnityViewToGroup: group has no size yet, deferring via OnGlobalLayoutListener");
@@ -270,6 +296,10 @@ public class ReactNativeUnity {
                             int h2 = group.getHeight();
                             if (w2 > 0 && h2 > 0) {
                                 group.getViewTreeObserver().removeOnGlobalLayoutListener(this);
+                                frame.measure(
+                                    android.view.View.MeasureSpec.makeMeasureSpec(w2, android.view.View.MeasureSpec.EXACTLY),
+                                    android.view.View.MeasureSpec.makeMeasureSpec(h2, android.view.View.MeasureSpec.EXACTLY)
+                                );
                                 frame.layout(0, 0, w2, h2);
                                 Log.d(TAG, "addUnityViewToGroup deferred layout applied: " + w2 + "x" + h2);
                             }
