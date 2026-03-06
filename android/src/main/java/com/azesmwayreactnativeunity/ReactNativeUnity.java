@@ -58,13 +58,24 @@ public class ReactNativeUnity {
                 @Override
                 public void run() {
                     activity.getWindow().setFormat(PixelFormat.RGBA_8888);
+                    // FLAG_FULLSCREEN was deprecated in API 30 and is fully ignored on
+                    // Android 15+ (edge-to-edge enforced). Only read it on older APIs.
                     int flag = activity.getWindow().getAttributes().flags;
-                    final boolean fullScreen = (flag & WindowManager.LayoutParams.FLAG_FULLSCREEN) == WindowManager.LayoutParams.FLAG_FULLSCREEN;
+                    final boolean fullScreen = Build.VERSION.SDK_INT < Build.VERSION_CODES.R
+                            ? (flag & WindowManager.LayoutParams.FLAG_FULLSCREEN) == WindowManager.LayoutParams.FLAG_FULLSCREEN
+                            : false;
 
                     try {
                         unityPlayer = new UPlayer(activity, callback);
                     } catch (ClassNotFoundException | InstantiationException | IllegalAccessException | InvocationTargetException | NoSuchMethodException e) {
                         Log.e(TAG, "Failed to create UPlayer", e);
+                    } catch (Error e) {
+                        // Catches UnsatisfiedLinkError thrown when Unity's native .so libraries
+                        // fail to load — most commonly on Android 15+ (API 35+) devices that
+                        // enforce 16KB page-size alignment. Unity 6.1+ is required for these
+                        // devices. See: https://developer.android.com/guide/practices/page-sizes
+                        Log.e(TAG, "Failed to load Unity native library — if running on Android 15+/16," +
+                                " ensure Unity is built with 16KB page-size support (Unity 6.1+): " + e.getMessage(), e);
                     }
 
                     if (unityPlayer == null) {
@@ -75,28 +86,36 @@ public class ReactNativeUnity {
                     new Handler(Looper.getMainLooper()).postDelayed(new Runnable() {
                         @Override
                         public void run() {
+                            Log.d(TAG, "createPlayer: starting Unity init sequence (Android API " + Build.VERSION.SDK_INT + ")");
                             try {
                                 addUnityViewToBackground();
+                                Log.d(TAG, "createPlayer: addUnityViewToBackground done");
                             } catch (InvocationTargetException | IllegalAccessException | NoSuchMethodException e) {
                                 Log.e(TAG, "addUnityViewToBackground failed", e);
                             }
 
                             unityPlayer.windowFocusChanged(true);
+                            Log.d(TAG, "createPlayer: windowFocusChanged(true) done");
 
                             try {
                                 unityPlayer.requestFocusPlayer();
+                                Log.d(TAG, "createPlayer: requestFocusPlayer done");
                             } catch (NoSuchMethodException | IllegalAccessException | InvocationTargetException e) {
                                 Log.e(TAG, "requestFocusPlayer failed", e);
                             }
 
                             unityPlayer.resume();
+                            Log.d(TAG, "createPlayer: resume() done");
 
-                            if (!fullScreen) {
+                            // FLAG_FULLSCREEN / FLAG_FORCE_NOT_FULLSCREEN are deprecated from
+                            // API 30 and have no effect on API 35+ (edge-to-edge mandatory).
+                            if (!fullScreen && Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
                                 activity.getWindow().addFlags(WindowManager.LayoutParams.FLAG_FORCE_NOT_FULLSCREEN);
                                 activity.getWindow().clearFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN);
                             }
 
                             _isUnityReady = true;
+                            Log.d(TAG, "createPlayer: _isUnityReady = true, invoking onReady()");
 
                             try {
                                 callback.onReady();
