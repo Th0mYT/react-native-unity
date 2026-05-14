@@ -78,6 +78,12 @@ configurations.all {
     }
 }
 
+def localProperties = new Properties()
+def localPropertiesFile = rootProject.file('local.properties')
+if (localPropertiesFile.exists()) {
+    localPropertiesFile.withReader('UTF-8') { reader -> localProperties.load(reader) }
+}
+
 android {
     ndkVersion rootProject.ext.ndkVersion
 
@@ -93,6 +99,9 @@ android {
         ndk {
             abiFilters 'arm64-v8a'
         }
+        manifestPlaceholders = [
+            GOOGLE_MAPS_API_KEY: localProperties.getProperty('GOOGLE_MAPS_API_KEY', '')
+        ]
     }
     splits {
         abi {

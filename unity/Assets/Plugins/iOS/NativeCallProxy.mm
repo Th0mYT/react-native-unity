@@ -3,7 +3,7 @@
 
 @implementation FrameworkLibAPI
 
-id<NativeCallsProtocol> api = NULL;
+__weak id<NativeCallsProtocol> api = NULL;
 +(void) registerAPIforNativeCalls:(id<NativeCallsProtocol>) aApi
 {
     api = aApi;

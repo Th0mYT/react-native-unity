@@ -34,10 +34,6 @@ UnityFramework* UnityFrameworkLoad() {
 
 @implementation RNUnityView
 
-NSDictionary* appLaunchOpts;
-
-static RNUnityView *sharedInstance;
-
 - (bool)unityIsInitialized {
     return [self ufw] && [[self ufw] appController];
 }
@@ -60,7 +56,13 @@ static RNUnityView *sharedInstance;
         }
         array[count] = NULL;
 
-        [[self ufw] runEmbeddedWithArgc: gArgc argv: array appLaunchOpts: appLaunchOpts];
+        [[self ufw] runEmbeddedWithArgc: gArgc argv: array appLaunchOpts: nil];
+
+        for (unsigned i = 0; i < count; i++) {
+            free(array[i]);
+        }
+        free(array);
+
         [[self ufw] appController].quitHandler = ^(){ NSLog(@"AppController.quitHandler called"); };
         [self.ufw.appController.rootView removeFromSuperview];
 
@@ -90,7 +92,7 @@ static RNUnityView *sharedInstance;
    }
 }
 
-- (void)pauseUnity:(BOOL * _Nonnull)pause {
+- (void)pauseUnity:(BOOL)pause {
     if([self unityIsInitialized]) {
         [[self ufw] pause:pause];
     }
@@ -123,7 +125,7 @@ static RNUnityView *sharedInstance;
         [self setUfw: nil];
 
         if (self.onPlayerUnload) {
-            self.onPlayerUnload(nil);
+            self.onPlayerUnload(@{});
         }
     }
 }
@@ -134,7 +136,7 @@ static RNUnityView *sharedInstance;
         [self setUfw: nil];
 
         if (self.onPlayerQuit) {
-            self.onPlayerQuit(nil);
+            self.onPlayerQuit(@{});
         }
     }
 }
@@ -156,6 +158,8 @@ static RNUnityView *sharedInstance;
 #ifdef RCT_NEW_ARCH_ENABLED
 - (void)prepareForRecycle {
     [super prepareForRecycle];
+
+    self.onUnityMessage = nil;
 
     if ([self unityIsInitialized]) {
       [[self ufw] unloadApplication];
